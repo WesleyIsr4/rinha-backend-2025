@@ -50,22 +50,41 @@ npm run dev
 
 ## 🐳 Execução com Docker
 
-### 1. Build das imagens
+### 1. Build e deploy automático
+
+```bash
+chmod +x scripts/build.sh
+./scripts/build.sh
+```
+
+### 2. Build manual das imagens
 
 ```bash
 docker-compose build
 ```
 
-### 2. Execute os serviços
+### 3. Execute os serviços
 
 ```bash
 docker-compose up -d
 ```
 
-### 3. Verifique os logs
+### 4. Verifique os logs
 
 ```bash
 docker-compose logs -f
+```
+
+### 5. Parar serviços
+
+```bash
+docker-compose down
+```
+
+### 6. Limpar volumes (cuidado!)
+
+```bash
+docker-compose down -v
 ```
 
 ## 📡 Endpoints

@@ -1,6 +1,7 @@
 const axios = require("axios");
 const { v4: uuidv4 } = require("uuid");
 const { logger } = require("../utils/logger");
+const { DatabaseService } = require("./databaseService");
 
 class PaymentService {
   constructor() {
@@ -12,6 +13,7 @@ class PaymentService {
       default: 0,
       fallback: 0,
     };
+    this.db = new DatabaseService();
   }
 
   // Process payment with fallback strategy
@@ -54,6 +56,32 @@ class PaymentService {
           defaultError: error.message,
           fallbackError: fallbackError.message,
         });
+
+        // For development/testing, simulate successful payment when processors are unavailable
+        if (
+          process.env.NODE_ENV === "development" ||
+          process.env.SIMULATE_PAYMENTS === "true"
+        ) {
+          logger.warn("Simulating payment processing for development", {
+            correlationId,
+            amount,
+          });
+
+          // Store payment record for summary
+          await this.db.storePayment(
+            correlationId,
+            amount,
+            "default", // Assume default processor
+            requestedAt
+          );
+
+          return {
+            success: true,
+            processor: "default",
+            message: "Payment processed successfully (simulated)",
+          };
+        }
+
         throw new Error("All payment processors are unavailable");
       }
     }
@@ -92,7 +120,7 @@ class PaymentService {
       });
 
       // Store payment record for summary
-      await this.storePaymentRecord(
+      await this.db.storePayment(
         correlationId,
         amount,
         processorType,
@@ -176,33 +204,29 @@ class PaymentService {
     return healthStatus;
   }
 
-  // Store payment record (placeholder - will be implemented with database)
-  async storePaymentRecord(correlationId, amount, processorType, requestedAt) {
-    // TODO: Implement database storage
-    logger.info("Payment record stored", {
-      correlationId,
-      amount,
-      processorType,
-      requestedAt,
-    });
-  }
-
-  // Get payment summary (placeholder - will be implemented with database)
+  // Get payment summary from database
   async getPaymentSummary(from, to) {
-    // TODO: Implement database query
-    logger.info("Getting payment summary", { from, to });
+    try {
+      return await this.db.getPaymentSummary(from, to);
+    } catch (error) {
+      logger.error("Failed to get payment summary from database", {
+        error: error.message,
+        from,
+        to,
+      });
 
-    // Placeholder response
-    return {
-      default: {
-        totalRequests: 0,
-        totalAmount: 0,
-      },
-      fallback: {
-        totalRequests: 0,
-        totalAmount: 0,
-      },
-    };
+      // Fallback to empty summary
+      return {
+        default: {
+          totalRequests: 0,
+          totalAmount: 0,
+        },
+        fallback: {
+          totalRequests: 0,
+          totalAmount: 0,
+        },
+      };
+    }
   }
 }
 
