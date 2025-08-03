@@ -5,6 +5,8 @@ const { DatabaseService } = require("./databaseService");
 const { CircuitBreaker } = require("./circuitBreaker");
 const { HealthCheckService } = require("./healthCheckService");
 const { RetryService } = require("./retryService");
+const { AuditService } = require("./auditService");
+const { ConsistencyService } = require("./consistencyService");
 
 class PaymentService {
   constructor() {
@@ -19,6 +21,8 @@ class PaymentService {
       baseDelay: 500,
       maxDelay: 5000,
     });
+    this.auditService = new AuditService();
+    this.consistencyService = new ConsistencyService();
     
     // Initialize circuit breakers
     this.circuitBreakers = {
@@ -32,7 +36,7 @@ class PaymentService {
       }),
     };
     
-    logger.info("Payment Service initialized with robust error handling", {
+    logger.info("Payment Service initialized with robust error handling and audit", {
       defaultProcessor: this.defaultProcessor,
       fallbackProcessor: this.fallbackProcessor,
     });
@@ -47,21 +51,58 @@ class PaymentService {
       requestedAt,
     });
 
+    // Verify consistency before processing
+    const consistencyCheck = await this.consistencyService.verifyPaymentConsistency(
+      correlationId,
+      amount,
+      "default", // We'll check the actual processor later
+      requestedAt
+    );
+
+    if (!consistencyCheck.consistent) {
+      logger.error("Payment consistency check failed", {
+        correlationId,
+        consistencyCheck,
+      });
+      throw new Error("Payment data consistency check failed");
+    }
+
+    // Log payment attempt
+    const auditId = this.auditService.logPaymentAttempt(correlationId, amount, "default", 1);
+
     try {
       // Try default processor first
-      const result = await this.processWithProcessor("default", correlationId, amount, requestedAt);
+      const result = await this.processWithProcessor("default", correlationId, amount, requestedAt, auditId);
+      
+      // Log successful payment
+      this.auditService.logPaymentSuccess(auditId, correlationId, amount, result.processor, result.responseData);
+      
       return result;
     } catch (error) {
+      // Log payment failure
+      this.auditService.logPaymentFailure(auditId, correlationId, amount, "default", error, 1);
+      
       logger.warn("Default processor failed, trying fallback", {
         correlationId,
         error: error.message,
       });
 
+      // Log fallback attempt
+      this.auditService.logFallbackAttempt(correlationId, amount, "default", "fallback");
+
       try {
         // Try fallback processor
-        const result = await this.processWithProcessor("fallback", correlationId, amount, requestedAt);
+        const fallbackAuditId = this.auditService.logPaymentAttempt(correlationId, amount, "fallback", 2);
+        const result = await this.processWithProcessor("fallback", correlationId, amount, requestedAt, fallbackAuditId);
+        
+        // Log successful fallback payment
+        this.auditService.logPaymentSuccess(fallbackAuditId, correlationId, amount, result.processor, result.responseData);
+        
         return result;
       } catch (fallbackError) {
+        // Log fallback payment failure
+        this.auditService.logPaymentFailure(fallbackAuditId, correlationId, amount, "fallback", fallbackError, 1);
+        
         logger.error("Both processors failed", {
           correlationId,
           defaultError: error.message,
@@ -86,6 +127,15 @@ class PaymentService {
             requestedAt
           );
 
+          // Log simulated payment success
+          this.auditService.logPaymentSuccess(
+            uuidv4(),
+            correlationId,
+            amount,
+            "default",
+            { message: "Payment processed successfully (simulated)" }
+          );
+
           return {
             success: true,
             processor: "default",
@@ -98,7 +148,7 @@ class PaymentService {
     }
   }
 
-  async processWithProcessor(processorType, correlationId, amount, requestedAt) {
+  async processWithProcessor(processorType, correlationId, amount, requestedAt, auditId) {
     const circuitBreaker = this.circuitBreakers[processorType];
     
     return await circuitBreaker.execute(async () => {
@@ -108,13 +158,13 @@ class PaymentService {
         amount,
         requestedAt,
         async () => {
-          return await this.callPaymentProcessor(processorType, correlationId, amount, requestedAt);
+          return await this.callPaymentProcessor(processorType, correlationId, amount, requestedAt, auditId);
         }
       );
     });
   }
 
-  async callPaymentProcessor(processorType, correlationId, amount, requestedAt) {
+  async callPaymentProcessor(processorType, correlationId, amount, requestedAt, auditId) {
     const processorUrl = processorType === "default" 
       ? this.defaultProcessor 
       : this.fallbackProcessor;
@@ -147,13 +197,27 @@ class PaymentService {
         responseData: response.data,
       });
 
-      // Store payment record
-      await this.db.storePayment(
-        correlationId,
-        amount,
-        processorType,
-        requestedAt
-      );
+      // Store payment record with audit
+      const dbOperation = async () => {
+        const result = await this.db.storePayment(
+          correlationId,
+          amount,
+          processorType,
+          requestedAt
+        );
+        
+        // Log successful database operation
+        this.auditService.logDatabaseOperation(
+          "INSERT",
+          "payments",
+          { correlationId, amount, processorType, requestedAt },
+          true
+        );
+        
+        return result;
+      };
+
+      await dbOperation();
 
       return {
         success: true,
@@ -169,6 +233,16 @@ class PaymentService {
         responseData: error.response?.data,
         processorUrl,
       });
+      
+      // Log failed database operation (if it was attempted)
+      this.auditService.logDatabaseOperation(
+        "INSERT",
+        "payments",
+        { correlationId, amount, processorType, requestedAt },
+        false,
+        error
+      );
+      
       throw error;
     }
   }
@@ -216,7 +290,19 @@ class PaymentService {
 
   async getPaymentSummary(from, to) {
     try {
-      return await this.db.getPaymentSummary(from, to);
+      const summary = await this.db.getPaymentSummary(from, to);
+      
+      // Verify summary consistency
+      const consistencyCheck = await this.consistencyService.verifySummaryConsistency(summary, from, to);
+      
+      if (!consistencyCheck.consistent) {
+        logger.warn("Summary consistency check failed", {
+          summary,
+          consistencyCheck,
+        });
+      }
+      
+      return summary;
     } catch (error) {
       logger.error("Failed to get payment summary from database", {
         error: error.message,
@@ -246,6 +332,8 @@ class PaymentService {
       },
       retryService: this.retryService.getStats(),
       healthCheck: this.healthCheckService.getHealthStats(),
+      audit: this.auditService.getAuditStats(),
+      consistency: this.consistencyService.getConsistencyStats(),
     };
   }
 
@@ -260,6 +348,22 @@ class PaymentService {
   clearHealthCheckCache() {
     this.healthCheckService.clearCache();
     logger.info("Health check cache cleared");
+  }
+
+  // Clear audit logs (useful for testing)
+  clearAuditLogs() {
+    this.auditService.clearAuditLogs();
+    logger.info("Audit logs cleared");
+  }
+
+  // Get audit logs for a specific correlation ID
+  getAuditLogsByCorrelationId(correlationId) {
+    return this.auditService.getAuditLogsByCorrelationId(correlationId);
+  }
+
+  // Get all audit logs
+  getAllAuditLogs() {
+    return this.auditService.getAllAuditLogs();
   }
 }
 

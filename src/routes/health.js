@@ -55,6 +55,50 @@ router.get("/stats", async (req, res) => {
   }
 });
 
+// Route to get audit logs for a specific correlation ID
+router.get("/audit/:correlationId", (req, res) => {
+  try {
+    const { correlationId } = req.params;
+    const auditLogs = paymentService.getAuditLogsByCorrelationId(correlationId);
+    
+    res.status(200).json({
+      status: "success",
+      timestamp: new Date().toISOString(),
+      correlationId,
+      auditLogs,
+      totalLogs: auditLogs.length,
+    });
+  } catch (error) {
+    logger.error("Failed to get audit logs", { error: error.message });
+    res.status(500).json({
+      status: "error",
+      timestamp: new Date().toISOString(),
+      error: error.message,
+    });
+  }
+});
+
+// Route to get all audit logs
+router.get("/audit", (req, res) => {
+  try {
+    const auditLogs = paymentService.getAllAuditLogs();
+    
+    res.status(200).json({
+      status: "success",
+      timestamp: new Date().toISOString(),
+      auditLogs,
+      totalLogs: auditLogs.length,
+    });
+  } catch (error) {
+    logger.error("Failed to get all audit logs", { error: error.message });
+    res.status(500).json({
+      status: "error",
+      timestamp: new Date().toISOString(),
+      error: error.message,
+    });
+  }
+});
+
 // Route to reset circuit breakers (for testing)
 router.post("/reset-circuit-breakers", (req, res) => {
   try {
@@ -85,6 +129,25 @@ router.post("/clear-health-cache", (req, res) => {
     });
   } catch (error) {
     logger.error("Failed to clear health check cache", { error: error.message });
+    res.status(500).json({
+      status: "error",
+      timestamp: new Date().toISOString(),
+      error: error.message,
+    });
+  }
+});
+
+// Route to clear audit logs (for testing)
+router.post("/clear-audit-logs", (req, res) => {
+  try {
+    paymentService.clearAuditLogs();
+    
+    res.status(200).json({
+      message: "Audit logs cleared successfully",
+      timestamp: new Date().toISOString(),
+    });
+  } catch (error) {
+    logger.error("Failed to clear audit logs", { error: error.message });
     res.status(500).json({
       status: "error",
       timestamp: new Date().toISOString(),
