@@ -12,7 +12,7 @@ class PaymentService {
   constructor() {
     this.defaultProcessor = "http://payment-processor-default:8080";
     this.fallbackProcessor = "http://payment-processor-fallback:8080";
-    
+
     // Initialize services
     this.db = new DatabaseService();
     this.healthCheckService = new HealthCheckService();
@@ -23,7 +23,7 @@ class PaymentService {
     });
     this.auditService = new AuditService();
     this.consistencyService = new ConsistencyService();
-    
+
     // Initialize circuit breakers
     this.circuitBreakers = {
       default: new CircuitBreaker("default-processor", {
@@ -35,11 +35,14 @@ class PaymentService {
         timeout: 30000, // 30 seconds
       }),
     };
-    
-    logger.info("Payment Service initialized with robust error handling and audit", {
-      defaultProcessor: this.defaultProcessor,
-      fallbackProcessor: this.fallbackProcessor,
-    });
+
+    logger.info(
+      "Payment Service initialized with robust error handling and audit",
+      {
+        defaultProcessor: this.defaultProcessor,
+        fallbackProcessor: this.fallbackProcessor,
+      }
+    );
   }
 
   async processPayment(correlationId, amount) {
@@ -52,12 +55,13 @@ class PaymentService {
     });
 
     // Verify consistency before processing
-    const consistencyCheck = await this.consistencyService.verifyPaymentConsistency(
-      correlationId,
-      amount,
-      "default", // We'll check the actual processor later
-      requestedAt
-    );
+    const consistencyCheck =
+      await this.consistencyService.verifyPaymentConsistency(
+        correlationId,
+        amount,
+        "default", // We'll check the actual processor later
+        requestedAt
+      );
 
     if (!consistencyCheck.consistent) {
       logger.error("Payment consistency check failed", {
@@ -68,41 +72,94 @@ class PaymentService {
     }
 
     // Log payment attempt
-    const auditId = this.auditService.logPaymentAttempt(correlationId, amount, "default", 1);
+    const auditId = this.auditService.logPaymentAttempt(
+      correlationId,
+      amount,
+      "default",
+      1
+    );
 
     try {
       // Try default processor first
-      const result = await this.processWithProcessor("default", correlationId, amount, requestedAt, auditId);
-      
+      const result = await this.processWithProcessor(
+        "default",
+        correlationId,
+        amount,
+        requestedAt,
+        auditId
+      );
+
       // Log successful payment
-      this.auditService.logPaymentSuccess(auditId, correlationId, amount, result.processor, result.responseData);
-      
+      this.auditService.logPaymentSuccess(
+        auditId,
+        correlationId,
+        amount,
+        result.processor,
+        result.responseData
+      );
+
       return result;
     } catch (error) {
       // Log payment failure
-      this.auditService.logPaymentFailure(auditId, correlationId, amount, "default", error, 1);
-      
+      this.auditService.logPaymentFailure(
+        auditId,
+        correlationId,
+        amount,
+        "default",
+        error,
+        1
+      );
+
       logger.warn("Default processor failed, trying fallback", {
         correlationId,
         error: error.message,
       });
 
       // Log fallback attempt
-      this.auditService.logFallbackAttempt(correlationId, amount, "default", "fallback");
+      this.auditService.logFallbackAttempt(
+        correlationId,
+        amount,
+        "default",
+        "fallback"
+      );
 
       try {
         // Try fallback processor
-        const fallbackAuditId = this.auditService.logPaymentAttempt(correlationId, amount, "fallback", 2);
-        const result = await this.processWithProcessor("fallback", correlationId, amount, requestedAt, fallbackAuditId);
-        
+        const fallbackAuditId = this.auditService.logPaymentAttempt(
+          correlationId,
+          amount,
+          "fallback",
+          2
+        );
+        const result = await this.processWithProcessor(
+          "fallback",
+          correlationId,
+          amount,
+          requestedAt,
+          fallbackAuditId
+        );
+
         // Log successful fallback payment
-        this.auditService.logPaymentSuccess(fallbackAuditId, correlationId, amount, result.processor, result.responseData);
-        
+        this.auditService.logPaymentSuccess(
+          fallbackAuditId,
+          correlationId,
+          amount,
+          result.processor,
+          result.responseData
+        );
+
         return result;
       } catch (fallbackError) {
         // Log fallback payment failure
-        this.auditService.logPaymentFailure(fallbackAuditId, correlationId, amount, "fallback", fallbackError, 1);
-        
+        this.auditService.logPaymentFailure(
+          fallbackAuditId,
+          correlationId,
+          amount,
+          "fallback",
+          fallbackError,
+          1
+        );
+
         logger.error("Both processors failed", {
           correlationId,
           defaultError: error.message,
@@ -148,9 +205,15 @@ class PaymentService {
     }
   }
 
-  async processWithProcessor(processorType, correlationId, amount, requestedAt, auditId) {
+  async processWithProcessor(
+    processorType,
+    correlationId,
+    amount,
+    requestedAt,
+    auditId
+  ) {
     const circuitBreaker = this.circuitBreakers[processorType];
-    
+
     return await circuitBreaker.execute(async () => {
       return await this.retryService.retryPayment(
         processorType,
@@ -158,16 +221,29 @@ class PaymentService {
         amount,
         requestedAt,
         async () => {
-          return await this.callPaymentProcessor(processorType, correlationId, amount, requestedAt, auditId);
+          return await this.callPaymentProcessor(
+            processorType,
+            correlationId,
+            amount,
+            requestedAt,
+            auditId
+          );
         }
       );
     });
   }
 
-  async callPaymentProcessor(processorType, correlationId, amount, requestedAt, auditId) {
-    const processorUrl = processorType === "default" 
-      ? this.defaultProcessor 
-      : this.fallbackProcessor;
+  async callPaymentProcessor(
+    processorType,
+    correlationId,
+    amount,
+    requestedAt,
+    auditId
+  ) {
+    const processorUrl =
+      processorType === "default"
+        ? this.defaultProcessor
+        : this.fallbackProcessor;
 
     const payload = {
       correlationId,
@@ -205,7 +281,7 @@ class PaymentService {
           processorType,
           requestedAt
         );
-        
+
         // Log successful database operation
         this.auditService.logDatabaseOperation(
           "INSERT",
@@ -213,7 +289,7 @@ class PaymentService {
           { correlationId, amount, processorType, requestedAt },
           true
         );
-        
+
         return result;
       };
 
@@ -233,7 +309,7 @@ class PaymentService {
         responseData: error.response?.data,
         processorUrl,
       });
-      
+
       // Log failed database operation (if it was attempted)
       this.auditService.logDatabaseOperation(
         "INSERT",
@@ -242,22 +318,25 @@ class PaymentService {
         false,
         error
       );
-      
+
       throw error;
     }
   }
 
   async getPaymentProcessorsHealth() {
     try {
-      const healthStatus = await this.healthCheckService.getAllProcessorsHealth();
-      
+      const healthStatus =
+        await this.healthCheckService.getAllProcessorsHealth();
+
       // Add circuit breaker stats
-      healthStatus.default.circuitBreaker = this.circuitBreakers.default.getStats();
-      healthStatus.fallback.circuitBreaker = this.circuitBreakers.fallback.getStats();
-      
+      healthStatus.default.circuitBreaker =
+        this.circuitBreakers.default.getStats();
+      healthStatus.fallback.circuitBreaker =
+        this.circuitBreakers.fallback.getStats();
+
       // Add retry service stats
       healthStatus.retryService = this.retryService.getStats();
-      
+
       // Add health check stats
       healthStatus.healthCheckStats = this.healthCheckService.getHealthStats();
 
@@ -266,7 +345,7 @@ class PaymentService {
       logger.error("Failed to get payment processors health", {
         error: error.message,
       });
-      
+
       return {
         default: {
           failing: true,
@@ -291,17 +370,22 @@ class PaymentService {
   async getPaymentSummary(from, to) {
     try {
       const summary = await this.db.getPaymentSummary(from, to);
-      
+
       // Verify summary consistency
-      const consistencyCheck = await this.consistencyService.verifySummaryConsistency(summary, from, to);
-      
+      const consistencyCheck =
+        await this.consistencyService.verifySummaryConsistency(
+          summary,
+          from,
+          to
+        );
+
       if (!consistencyCheck.consistent) {
         logger.warn("Summary consistency check failed", {
           summary,
           consistencyCheck,
         });
       }
-      
+
       return summary;
     } catch (error) {
       logger.error("Failed to get payment summary from database", {
