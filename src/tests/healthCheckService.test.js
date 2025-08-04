@@ -4,20 +4,43 @@ const { HealthCheckService } = require("../services/healthCheckService");
 jest.mock("axios");
 const axios = require("axios");
 
+// Mock DatabaseService
+jest.mock("../services/databaseService");
+const { DatabaseService } = require("../services/databaseService");
+
 describe("HealthCheckService", () => {
   let healthCheckService;
 
   beforeEach(() => {
     healthCheckService = new HealthCheckService();
     jest.clearAllMocks();
+
+    // Mock Redis client
+    DatabaseService.getRedisClient.mockResolvedValue({
+      hget: jest.fn(),
+      hset: jest.fn(),
+      expire: jest.fn(),
+      lpush: jest.fn(),
+      ltrim: jest.fn(),
+      lrange: jest.fn(),
+      del: jest.fn(),
+    });
   });
 
   describe("Initialization", () => {
     it("should initialize with correct configuration", () => {
-      expect(healthCheckService.defaultProcessor).toBe("http://payment-processor-default:8080");
-      expect(healthCheckService.fallbackProcessor).toBe("http://payment-processor-fallback:8080");
+      expect(healthCheckService.defaultProcessor).toBe(
+        "http://payment-processor-default:8080"
+      );
+      expect(healthCheckService.fallbackProcessor).toBe(
+        "http://payment-processor-fallback:8080"
+      );
       expect(healthCheckService.healthCheckInterval).toBe(5000);
       expect(healthCheckService.healthCheckTimeout).toBe(3000);
+    });
+
+    it("should initialize Redis connection", async () => {
+      expect(DatabaseService.getRedisClient).toHaveBeenCalled();
     });
   });
 
@@ -60,7 +83,7 @@ describe("HealthCheckService", () => {
       expect(axios.get).toHaveBeenCalledTimes(1);
 
       // Wait for rate limit to expire (shorter wait for test)
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise((resolve) => setTimeout(resolve, 100));
 
       // Second call after rate limit
       await healthCheckService.getProcessorHealth("default");
@@ -149,7 +172,7 @@ describe("HealthCheckService", () => {
       await healthCheckService.getProcessorHealth("default");
       await healthCheckService.getProcessorHealth("default");
 
-      const stats = healthCheckService.getHealthStats();
+      const stats = await healthCheckService.getHealthStats();
       expect(stats.default.avgResponseTime).toBeGreaterThan(0);
       expect(stats.default.totalChecks).toBe(1); // Only one actual call due to caching
     });
@@ -170,7 +193,7 @@ describe("HealthCheckService", () => {
         await healthCheckService.getProcessorHealth("default");
       }
 
-      const stats = healthCheckService.getHealthStats();
+      const stats = await healthCheckService.getHealthStats();
       expect(stats.default.totalChecks).toBe(1); // Only one actual call due to caching
     });
   });
@@ -226,16 +249,18 @@ describe("HealthCheckService", () => {
   });
 
   describe("Cache management", () => {
-    it("should clear cache", () => {
-      healthCheckService.clearCache();
-      
+    it("should clear cache", async () => {
+      await healthCheckService.clearCache();
+
       expect(healthCheckService.healthCache.size).toBe(0);
       expect(healthCheckService.lastHealthCheck.default).toBe(0);
       expect(healthCheckService.lastHealthCheck.fallback).toBe(0);
     });
 
-    it("should get next health check time", () => {
-      const nextCheckTime = healthCheckService.getNextHealthCheckTime("default");
+    it("should get next health check time", async () => {
+      const nextCheckTime = await healthCheckService.getNextHealthCheckTime(
+        "default"
+      );
       expect(nextCheckTime).toBeInstanceOf(Date);
     });
   });
@@ -252,7 +277,7 @@ describe("HealthCheckService", () => {
       await healthCheckService.getProcessorHealth("default");
       await healthCheckService.getProcessorHealth("fallback");
 
-      const stats = healthCheckService.getHealthStats();
+      const stats = await healthCheckService.getHealthStats();
 
       expect(stats.default).toEqual({
         avgResponseTime: expect.any(Number),
@@ -273,4 +298,58 @@ describe("HealthCheckService", () => {
       });
     });
   });
-}); 
+
+  describe("Redis cache integration", () => {
+    it("should use Redis cache when available", async () => {
+      const mockRedisClient = {
+        hget: jest.fn().mockResolvedValue(
+          JSON.stringify({
+            failing: false,
+            minResponseTime: 100,
+            responseTime: 150,
+            lastChecked: new Date().toISOString(),
+            isHealthy: true,
+          })
+        ),
+        hset: jest.fn().mockResolvedValue(1),
+        expire: jest.fn().mockResolvedValue(1),
+        lpush: jest.fn().mockResolvedValue(1),
+        ltrim: jest.fn().mockResolvedValue(1),
+        lrange: jest.fn().mockResolvedValue(["150", "200"]),
+        del: jest.fn().mockResolvedValue(1),
+      };
+
+      DatabaseService.getRedisClient.mockResolvedValue(mockRedisClient);
+
+      const newHealthService = new HealthCheckService();
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Wait for Redis init
+
+      const result = await newHealthService.getProcessorHealth("default");
+
+      expect(result.isHealthy).toBe(true);
+      expect(mockRedisClient.hget).toHaveBeenCalled();
+    });
+
+    it("should fallback to memory cache when Redis fails", async () => {
+      const mockResponse = {
+        data: { failing: false, minResponseTime: 100 },
+        status: 200,
+      };
+
+      axios.get.mockResolvedValue(mockResponse);
+
+      // Mock Redis failure
+      DatabaseService.getRedisClient.mockRejectedValue(
+        new Error("Redis connection failed")
+      );
+
+      const newHealthService = new HealthCheckService();
+      await new Promise((resolve) => setTimeout(resolve, 100)); // Wait for Redis init
+
+      const result = await newHealthService.getProcessorHealth("default");
+
+      expect(result.isHealthy).toBe(true);
+      expect(axios.get).toHaveBeenCalled();
+    });
+  });
+});

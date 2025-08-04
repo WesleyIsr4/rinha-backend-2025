@@ -1,157 +1,180 @@
 const express = require("express");
 const { PaymentService } = require("../services/paymentService");
+const { DatabaseService } = require("../services/databaseService");
 const { logger } = require("../utils/logger");
 
 const router = express.Router();
 const paymentService = new PaymentService();
+const databaseService = new DatabaseService();
 
-router.get("/", (req, res) => {
-  res.status(200).json({
-    status: "healthy",
-    timestamp: new Date().toISOString(),
-    service: "rinha-backend-2025",
-    version: "1.0.0",
-  });
-});
-
-router.get("/payment-processors", async (req, res) => {
+// Basic health check
+router.get("/", async (req, res) => {
   try {
-    const healthStatus = await paymentService.getPaymentProcessorsHealth();
+    const dbConnected = await databaseService.testConnection();
+    const redisConnected = await databaseService.testRedisConnection();
 
-    res.status(200).json({
+    const healthStatus = {
       status: "healthy",
       timestamp: new Date().toISOString(),
-      processors: healthStatus,
-    });
+      services: {
+        database: dbConnected ? "connected" : "disconnected",
+        redis: redisConnected ? "connected" : "disconnected",
+        paymentService: "running",
+      },
+    };
+
+    const httpStatus = dbConnected && redisConnected ? 200 : 503;
+    res.status(httpStatus).json(healthStatus);
   } catch (error) {
     logger.error("Health check failed", { error: error.message });
     res.status(503).json({
       status: "unhealthy",
-      timestamp: new Date().toISOString(),
       error: error.message,
+      timestamp: new Date().toISOString(),
     });
   }
 });
 
-// New route for detailed service statistics
+// Payment processors health check
+router.get("/payment-processors", async (req, res) => {
+  try {
+    const healthData = await paymentService.getPaymentProcessorsHealth();
+    res.json(healthData);
+  } catch (error) {
+    logger.error("Payment processors health check failed", {
+      error: error.message,
+    });
+    res.status(500).json({
+      error: "Failed to check payment processors health",
+      details: error.message,
+    });
+  }
+});
+
+// Performance monitoring endpoint
+router.get("/performance", async (req, res) => {
+  try {
+    const performanceMetrics = paymentService.getPerformanceMetrics();
+    const dbStats = databaseService.getPoolStats();
+    const paymentStats = await databaseService.getPaymentStats();
+
+    const performanceData = {
+      ...performanceMetrics,
+      database: {
+        pool: dbStats,
+        payments: paymentStats,
+      },
+      timestamp: new Date().toISOString(),
+    };
+
+    res.json(performanceData);
+  } catch (error) {
+    logger.error("Performance monitoring failed", { error: error.message });
+    res.status(500).json({
+      error: "Failed to get performance metrics",
+      details: error.message,
+    });
+  }
+});
+
+// Detailed statistics endpoint
 router.get("/stats", async (req, res) => {
   try {
-    const serviceStats = paymentService.getServiceStats();
-    
-    res.status(200).json({
-      status: "healthy",
+    const stats = paymentService.getServiceStats();
+    const dbStats = databaseService.getPoolStats();
+    const paymentStats = await databaseService.getPaymentStats();
+
+    const detailedStats = {
+      ...stats,
+      database: {
+        pool: dbStats,
+        payments: paymentStats,
+      },
       timestamp: new Date().toISOString(),
-      service: "rinha-backend-2025",
-      version: "1.0.0",
-      stats: serviceStats,
-    });
+    };
+
+    res.json(detailedStats);
   } catch (error) {
-    logger.error("Failed to get service stats", { error: error.message });
+    logger.error("Failed to get detailed stats", { error: error.message });
     res.status(500).json({
-      status: "error",
-      timestamp: new Date().toISOString(),
-      error: error.message,
+      error: "Failed to get detailed statistics",
+      details: error.message,
     });
   }
 });
 
-// Route to get audit logs for a specific correlation ID
+// Reset circuit breakers (for testing)
+router.post("/reset-circuit-breakers", (req, res) => {
+  try {
+    paymentService.resetCircuitBreakers();
+    res.json({ message: "Circuit breakers reset successfully" });
+  } catch (error) {
+    logger.error("Failed to reset circuit breakers", { error: error.message });
+    res.status(500).json({
+      error: "Failed to reset circuit breakers",
+      details: error.message,
+    });
+  }
+});
+
+// Clear health check cache (for testing)
+router.post("/clear-health-cache", async (req, res) => {
+  try {
+    await paymentService.clearHealthCheckCache();
+    res.json({ message: "Health check cache cleared successfully" });
+  } catch (error) {
+    logger.error("Failed to clear health check cache", {
+      error: error.message,
+    });
+    res.status(500).json({
+      error: "Failed to clear health check cache",
+      details: error.message,
+    });
+  }
+});
+
+// Clear audit logs (for testing)
+router.post("/clear-audit-logs", (req, res) => {
+  try {
+    paymentService.clearAuditLogs();
+    res.json({ message: "Audit logs cleared successfully" });
+  } catch (error) {
+    logger.error("Failed to clear audit logs", { error: error.message });
+    res.status(500).json({
+      error: "Failed to clear audit logs",
+      details: error.message,
+    });
+  }
+});
+
+// Get audit logs by correlation ID
 router.get("/audit/:correlationId", (req, res) => {
   try {
     const { correlationId } = req.params;
     const auditLogs = paymentService.getAuditLogsByCorrelationId(correlationId);
-    
-    res.status(200).json({
-      status: "success",
-      timestamp: new Date().toISOString(),
-      correlationId,
-      auditLogs,
-      totalLogs: auditLogs.length,
-    });
+    res.json(auditLogs);
   } catch (error) {
-    logger.error("Failed to get audit logs", { error: error.message });
-    res.status(500).json({
-      status: "error",
-      timestamp: new Date().toISOString(),
+    logger.error("Failed to get audit logs by correlation ID", {
+      correlationId: req.params.correlationId,
       error: error.message,
+    });
+    res.status(500).json({
+      error: "Failed to get audit logs",
+      details: error.message,
     });
   }
 });
 
-// Route to get all audit logs
+// Get all audit logs
 router.get("/audit", (req, res) => {
   try {
     const auditLogs = paymentService.getAllAuditLogs();
-    
-    res.status(200).json({
-      status: "success",
-      timestamp: new Date().toISOString(),
-      auditLogs,
-      totalLogs: auditLogs.length,
-    });
+    res.json(auditLogs);
   } catch (error) {
     logger.error("Failed to get all audit logs", { error: error.message });
     res.status(500).json({
-      status: "error",
-      timestamp: new Date().toISOString(),
-      error: error.message,
-    });
-  }
-});
-
-// Route to reset circuit breakers (for testing)
-router.post("/reset-circuit-breakers", (req, res) => {
-  try {
-    paymentService.resetCircuitBreakers();
-    
-    res.status(200).json({
-      message: "Circuit breakers reset successfully",
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.error("Failed to reset circuit breakers", { error: error.message });
-    res.status(500).json({
-      status: "error",
-      timestamp: new Date().toISOString(),
-      error: error.message,
-    });
-  }
-});
-
-// Route to clear health check cache (for testing)
-router.post("/clear-health-cache", (req, res) => {
-  try {
-    paymentService.clearHealthCheckCache();
-    
-    res.status(200).json({
-      message: "Health check cache cleared successfully",
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.error("Failed to clear health check cache", { error: error.message });
-    res.status(500).json({
-      status: "error",
-      timestamp: new Date().toISOString(),
-      error: error.message,
-    });
-  }
-});
-
-// Route to clear audit logs (for testing)
-router.post("/clear-audit-logs", (req, res) => {
-  try {
-    paymentService.clearAuditLogs();
-    
-    res.status(200).json({
-      message: "Audit logs cleared successfully",
-      timestamp: new Date().toISOString(),
-    });
-  } catch (error) {
-    logger.error("Failed to clear audit logs", { error: error.message });
-    res.status(500).json({
-      status: "error",
-      timestamp: new Date().toISOString(),
-      error: error.message,
+      error: "Failed to get audit logs",
+      details: error.message,
     });
   }
 });
