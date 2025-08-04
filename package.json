@@ -1,7 +1,7 @@
 {
   "name": "rinha-backend-2025",
   "version": "1.0.0",
-  "description": "Backend para Rinha de Backend 2025 - Processador de Pagamentos",
+  "description": "Backend robusto para o desafio Rinha de Backend 2025",
   "main": "src/app.js",
   "scripts": {
     "start": "node src/app.js",
@@ -15,8 +15,11 @@
   "keywords": [
     "rinha",
     "backend",
-    "payments",
-    "node"
+    "nodejs",
+    "express",
+    "postgresql",
+    "redis",
+    "docker"
   ],
   "author": "Wesley",
   "license": "MIT",
@@ -25,6 +28,7 @@
     "axios": "^1.6.0",
     "joi": "^17.11.0",
     "winston": "^3.11.0",
+    "winston-daily-rotate-file": "^4.7.1",
     "cors": "^2.8.5",
     "helmet": "^7.1.0",
     "compression": "^1.7.4",
@@ -34,11 +38,10 @@
     "redis": "^4.6.10"
   },
   "devDependencies": {
-    "nodemon": "^3.0.1",
     "jest": "^29.7.0",
     "supertest": "^6.3.3",
-    "eslint": "^8.54.0",
-    "@types/jest": "^29.5.8"
+    "nodemon": "^3.0.1",
+    "eslint": "^8.54.0"
   },
   "engines": {
     "node": ">=20.0.0"
