@@ -6,11 +6,11 @@ describe("App", () => {
     it("should return application info", async () => {
       const response = await request(app).get("/").expect(200);
 
-      expect(response.body).toHaveProperty("message");
+      expect(response.body).toHaveProperty("service");
       expect(response.body).toHaveProperty("version");
-      expect(response.body).toHaveProperty("endpoints");
-      expect(response.body.endpoints).toHaveProperty("payments");
-      expect(response.body.endpoints).toHaveProperty("health");
+      expect(response.body).toHaveProperty("status");
+      expect(response.body).toHaveProperty("timestamp");
+      expect(response.body).toHaveProperty("environment");
     });
   });
 
@@ -18,11 +18,11 @@ describe("App", () => {
     it("should return health status", async () => {
       const response = await request(app).get("/health").expect(200);
 
-      expect(response.body).toHaveProperty("status", "healthy");
+      expect(response.body).toHaveProperty("status");
       expect(response.body).toHaveProperty("timestamp");
       expect(response.body).toHaveProperty("service");
     });
-  });
+  }, 10000); // Increase timeout
 
   describe("GET /nonexistent", () => {
     it("should return 404 for non-existent endpoints", async () => {

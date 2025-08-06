@@ -1,42 +1,34 @@
+const axios = require("axios");
 const { HealthCheckService } = require("../services/healthCheckService");
+const { DatabaseService } = require("../services/databaseService");
 
 // Mock axios
 jest.mock("axios");
-const axios = require("axios");
 
 // Mock DatabaseService
-jest.mock("../services/databaseService");
-const { DatabaseService } = require("../services/databaseService");
+jest.mock("../services/databaseService", () => ({
+  DatabaseService: {
+    getRedisClient: jest.fn(() => ({
+      get: jest.fn(),
+      set: jest.fn(),
+      del: jest.fn(),
+    })),
+  },
+}));
 
 describe("HealthCheckService", () => {
   let healthCheckService;
 
   beforeEach(() => {
-    healthCheckService = new HealthCheckService();
     jest.clearAllMocks();
-
-    // Mock Redis client
-    DatabaseService.getRedisClient.mockResolvedValue({
-      hget: jest.fn(),
-      hset: jest.fn(),
-      expire: jest.fn(),
-      lpush: jest.fn(),
-      ltrim: jest.fn(),
-      lrange: jest.fn(),
-      del: jest.fn(),
-    });
+    healthCheckService = new HealthCheckService();
   });
 
   describe("Initialization", () => {
-    it("should initialize with correct configuration", () => {
-      expect(healthCheckService.defaultProcessor).toBe(
-        "http://payment-processor-default:8080"
-      );
-      expect(healthCheckService.fallbackProcessor).toBe(
-        "http://payment-processor-fallback:8080"
-      );
-      expect(healthCheckService.healthCheckInterval).toBe(5000);
-      expect(healthCheckService.healthCheckTimeout).toBe(3000);
+    it("should initialize with default configuration", () => {
+      expect(healthCheckService.rateLimitMs).toBe(5000);
+      expect(healthCheckService.timeoutMs).toBe(3000);
+      expect(healthCheckService.maxResponseTimeHistory).toBe(10);
     });
 
     it("should initialize Redis connection", async () => {

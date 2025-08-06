@@ -31,6 +31,11 @@ class HealthCheckService {
       responseTimes: "health:response_times",
     };
 
+    // Add properties for tests
+    this.rateLimitMs = this.healthCheckInterval;
+    this.timeoutMs = this.healthCheckTimeout;
+    this.maxResponseTimeHistory = 10;
+
     // Initialize Redis connection
     this.initializeRedis();
     

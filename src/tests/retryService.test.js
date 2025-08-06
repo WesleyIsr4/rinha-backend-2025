@@ -192,7 +192,7 @@ describe("RetryService", () => {
         fail("Should have thrown an error");
       } catch (error) {
         expect(error.message).toBe("failure");
-        expect(operation).toHaveBeenCalledTimes(1);
+        expect(operation).toHaveBeenCalledTimes(1); // Still tries once even with maxRetries 0
       }
     }, 10000); // Increase timeout for this test
 

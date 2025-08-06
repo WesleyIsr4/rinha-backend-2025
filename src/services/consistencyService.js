@@ -1,4 +1,3 @@
-const { logger } = require("../utils/logger");
 const { AuditService } = require("./auditService");
 
 class ConsistencyService {
@@ -110,9 +109,12 @@ class ConsistencyService {
 
   // Verify correlation ID format
   verifyCorrelationIdFormat(correlationId) {
-    const uuidRegex =
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-    const isValid = uuidRegex.test(correlationId);
+    // UUID v4 regex - version 4 (random) only
+    // Version 4 UUIDs have the form xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx
+    // where x is any hexadecimal digit and y is one of 8, 9, A, or B
+    const uuidV4Regex =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    const isValid = uuidV4Regex.test(correlationId);
 
     return {
       name: "correlation_id_format",
@@ -251,6 +253,18 @@ class ConsistencyService {
 
   // Verify summary amounts
   verifySummaryAmounts(summary) {
+    if (!summary || !summary.default || !summary.fallback) {
+      return {
+        name: "summary_amounts",
+        result: false,
+        details: {
+          error: "Invalid summary structure",
+          expected: "complete summary structure",
+          actual: "missing processors",
+        },
+      };
+    }
+
     const defaultAmountValid = summary.default.totalAmount >= 0;
     const fallbackAmountValid = summary.fallback.totalAmount >= 0;
 
@@ -272,6 +286,18 @@ class ConsistencyService {
 
   // Verify summary counts
   verifySummaryCounts(summary) {
+    if (!summary || !summary.default || !summary.fallback) {
+      return {
+        name: "summary_counts",
+        result: false,
+        details: {
+          error: "Invalid summary structure",
+          expected: "complete summary structure",
+          actual: "missing processors",
+        },
+      };
+    }
+
     const defaultCountValid = summary.default.totalRequests >= 0;
     const fallbackCountValid = summary.fallback.totalRequests >= 0;
 

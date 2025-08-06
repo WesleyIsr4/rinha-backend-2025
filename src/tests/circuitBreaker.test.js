@@ -155,6 +155,9 @@ describe("CircuitBreaker", () => {
     it("should move to HALF_OPEN after timeout", async () => {
       const operation = jest.fn().mockRejectedValue(new Error("test error"));
       
+      // Create circuit breaker with shorter timeout and lower failure threshold for testing
+      const circuitBreaker = new CircuitBreaker("test", { timeout: 1000, failureThreshold: 3 });
+      
       // Open the circuit
       for (let i = 0; i < 3; i++) {
         try {
