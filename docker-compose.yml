@@ -32,8 +32,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.7"
-          memory: "150MB"
+          cpus: "0.6"
+          memory: "125MB"
     healthcheck:
       test:
         [
@@ -62,8 +62,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.7"
-          memory: "150MB"
+          cpus: "0.6"
+          memory: "125MB"
     healthcheck:
       test:
         [
@@ -93,8 +93,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.3"
-          memory: "100MB"
+          cpus: "0.15"
+          memory: "25MB"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rinha_user -d rinha_backend"]
       interval: 30s
@@ -113,8 +113,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.1"
-          memory: "50MB"
+          cpus: "0.05"
+          memory: "25MB"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s

@@ -147,6 +147,33 @@ app.use((req, res, next) => {
 app.use("/payments", paymentsRoutes);
 app.use("/health", healthRoutes);
 
+// Add direct route for /payments-summary (required by spec)
+app.get("/payments-summary", async (req, res, next) => {
+  try {
+    const { from, to } = req.query;
+
+    logger.info("Fetching payment summary", { from, to });
+
+    const paymentService =
+      new (require("./services/paymentService").PaymentService)();
+    const summary = await paymentService.getPaymentSummary(from, to);
+
+    logger.info("Payment summary retrieved", {
+      defaultRequests: summary.default.totalRequests,
+      defaultAmount: summary.default.totalAmount,
+      fallbackRequests: summary.fallback.totalRequests,
+      fallbackAmount: summary.fallback.totalAmount,
+    });
+
+    res.status(200).json(summary);
+  } catch (error) {
+    logger.error("Failed to get payment summary", {
+      error: error.message,
+    });
+    next(error);
+  }
+});
+
 // Root endpoint
 app.get("/", (req, res) => {
   res.json({

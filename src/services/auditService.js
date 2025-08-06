@@ -1,5 +1,5 @@
-const { logger } = require('../utils/logger');
-const { v4: uuidv4 } = require('uuid');
+const { logger } = require("../utils/logger");
+const { v4: uuidv4 } = require("uuid");
 
 class AuditService {
   constructor() {
@@ -12,43 +12,56 @@ class AuditService {
     const auditEntry = {
       id: uuidv4(),
       timestamp: new Date().toISOString(),
-      event: 'PAYMENT_ATTEMPT',
+      event: "PAYMENT_ATTEMPT",
       correlationId,
       amount,
       processorType,
       attemptNumber,
-      status: 'STARTED',
+      status: "STARTED",
     };
 
     this.addAuditLog(auditEntry);
-    logger.info('Payment attempt logged', auditEntry);
+    logger.info("Payment attempt logged", auditEntry);
     return auditEntry.id;
   }
 
   // Log payment success
-  logPaymentSuccess(auditId, correlationId, amount, processorType, responseData) {
+  logPaymentSuccess(
+    auditId,
+    correlationId,
+    amount,
+    processorType,
+    responseData
+  ) {
     const auditEntry = {
       id: auditId || uuidv4(),
       timestamp: new Date().toISOString(),
-      event: 'PAYMENT_SUCCESS',
+      event: "PAYMENT_SUCCESS",
       correlationId,
       amount,
       processorType,
       responseData,
-      status: 'SUCCESS',
+      status: "SUCCESS",
     };
 
     this.addAuditLog(auditEntry);
-    logger.info('Payment success logged', auditEntry);
+    logger.info("Payment success logged", auditEntry);
     return auditEntry.id;
   }
 
   // Log payment failure
-  logPaymentFailure(auditId, correlationId, amount, processorType, error, attemptNumber) {
+  logPaymentFailure(
+    auditId,
+    correlationId,
+    amount,
+    processorType,
+    error,
+    attemptNumber
+  ) {
     const auditEntry = {
       id: auditId || uuidv4(),
       timestamp: new Date().toISOString(),
-      event: 'PAYMENT_FAILURE',
+      event: "PAYMENT_FAILURE",
       correlationId,
       amount,
       processorType,
@@ -56,11 +69,11 @@ class AuditService {
       errorCode: error.code,
       statusCode: error.response?.status,
       attemptNumber,
-      status: 'FAILED',
+      status: "FAILED",
     };
 
     this.addAuditLog(auditEntry);
-    logger.error('Payment failure logged', auditEntry);
+    logger.error("Payment failure logged", auditEntry);
     return auditEntry.id;
   }
 
@@ -69,16 +82,16 @@ class AuditService {
     const auditEntry = {
       id: uuidv4(),
       timestamp: new Date().toISOString(),
-      event: 'FALLBACK_ATTEMPT',
+      event: "FALLBACK_ATTEMPT",
       correlationId,
       amount,
       fromProcessor,
       toProcessor,
-      status: 'FALLBACK',
+      status: "FALLBACK",
     };
 
     this.addAuditLog(auditEntry);
-    logger.warn('Fallback attempt logged', auditEntry);
+    logger.warn("Fallback attempt logged", auditEntry);
     return auditEntry.id;
   }
 
@@ -87,23 +100,23 @@ class AuditService {
     const auditEntry = {
       id: uuidv4(),
       timestamp: new Date().toISOString(),
-      event: 'DATABASE_OPERATION',
+      event: "DATABASE_OPERATION",
       operation,
       table,
       data,
       success,
       error: error?.message,
-      status: success ? 'SUCCESS' : 'FAILED',
+      status: success ? "SUCCESS" : "FAILED",
     };
 
     this.addAuditLog(auditEntry);
-    
+
     if (success) {
-      logger.info('Database operation logged', auditEntry);
+      logger.info("Database operation logged", auditEntry);
     } else {
-      logger.error('Database operation failed', auditEntry);
+      logger.error("Database operation failed", auditEntry);
     }
-    
+
     return auditEntry.id;
   }
 
@@ -112,22 +125,22 @@ class AuditService {
     const auditEntry = {
       id: uuidv4(),
       timestamp: new Date().toISOString(),
-      event: 'CONSISTENCY_CHECK',
+      event: "CONSISTENCY_CHECK",
       correlationId,
       checkType,
       result,
       details,
-      status: result ? 'PASSED' : 'FAILED',
+      status: result ? "PASSED" : "FAILED",
     };
 
     this.addAuditLog(auditEntry);
-    
+
     if (result) {
-      logger.info('Consistency check passed', auditEntry);
+      logger.info("Consistency check passed", auditEntry);
     } else {
-      logger.warn('Consistency check failed', auditEntry);
+      logger.warn("Consistency check failed", auditEntry);
     }
-    
+
     return auditEntry.id;
   }
 
@@ -136,23 +149,23 @@ class AuditService {
     const auditEntry = {
       id: uuidv4(),
       timestamp: new Date().toISOString(),
-      event: 'CIRCUIT_BREAKER_STATE_CHANGE',
+      event: "CIRCUIT_BREAKER_STATE_CHANGE",
       processorType,
       fromState,
       toState,
       reason,
-      status: 'STATE_CHANGE',
+      status: "STATE_CHANGE",
     };
 
     this.addAuditLog(auditEntry);
-    logger.info('Circuit breaker state change logged', auditEntry);
+    logger.info("Circuit breaker state change logged", auditEntry);
     return auditEntry.id;
   }
 
   // Add audit log to memory (with size limit)
   addAuditLog(auditEntry) {
     this.auditLogs.push(auditEntry);
-    
+
     // Keep only last maxAuditLogs entries
     if (this.auditLogs.length > this.maxAuditLogs) {
       this.auditLogs = this.auditLogs.slice(-this.maxAuditLogs);
@@ -161,12 +174,12 @@ class AuditService {
 
   // Get audit logs for a specific correlation ID
   getAuditLogsByCorrelationId(correlationId) {
-    return this.auditLogs.filter(log => log.correlationId === correlationId);
+    return this.auditLogs.filter((log) => log.correlationId === correlationId);
   }
 
   // Get audit logs for a specific time range
   getAuditLogsByTimeRange(from, to) {
-    return this.auditLogs.filter(log => {
+    return this.auditLogs.filter((log) => {
       const logTime = new Date(log.timestamp);
       return logTime >= from && logTime <= to;
     });
@@ -174,7 +187,7 @@ class AuditService {
 
   // Get audit logs by event type
   getAuditLogsByEvent(event) {
-    return this.auditLogs.filter(log => log.event === event);
+    return this.auditLogs.filter((log) => log.event === event);
   }
 
   // Get all audit logs (for debugging)
@@ -191,19 +204,23 @@ class AuditService {
       statuses: {},
       timeRange: {
         first: this.auditLogs.length > 0 ? this.auditLogs[0].timestamp : null,
-        last: this.auditLogs.length > 0 ? this.auditLogs[this.auditLogs.length - 1].timestamp : null,
+        last:
+          this.auditLogs.length > 0
+            ? this.auditLogs[this.auditLogs.length - 1].timestamp
+            : null,
       },
     };
 
-    this.auditLogs.forEach(log => {
+    this.auditLogs.forEach((log) => {
       // Count events
       stats.events[log.event] = (stats.events[log.event] || 0) + 1;
-      
+
       // Count processors
       if (log.processorType) {
-        stats.processors[log.processorType] = (stats.processors[log.processorType] || 0) + 1;
+        stats.processors[log.processorType] =
+          (stats.processors[log.processorType] || 0) + 1;
       }
-      
+
       // Count statuses
       stats.statuses[log.status] = (stats.statuses[log.status] || 0) + 1;
     });
@@ -214,8 +231,8 @@ class AuditService {
   // Clear audit logs (for testing)
   clearAuditLogs() {
     this.auditLogs = [];
-    logger.info('Audit logs cleared');
+    logger.info("Audit logs cleared");
   }
 }
 
-module.exports = { AuditService }; 
+module.exports = { AuditService };
